@@ -1,0 +1,143 @@
+/*
+ * The sign-in splash (LoginSplash.tsx, SplashArt.tsx, SplashReveal.tsx): the Sāchu wallpaper
+ * full screen, then a blur-out that reveals the home screen underneath.
+ *
+ * Layering: above the app's own overlays (bottom nav z-40, sheets and toasts z-60, the bell's
+ * reader z-70), below the portrait-only prompt (OrientationGuard, z-100). Position: fixed and
+ * outside #app-scroll, so the document and the scroller are never touched.
+ */
+
+/* The wallpaper layer. The fill is each wallpaper's own average colour (sampled from the WebPs'
+   edge columns, which are also what meets the fill on very wide or very tall screens), so
+   nothing flashes before the image decodes. They are the artwork's colours, not UI colours: the
+   nearest brand tokens (sand-200 #e8e0d1, ink-900 #213e4b) would show as a visible seam. */
+.art {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  overflow: hidden;
+  /* The wallpaper is sized against this box (cq units below). */
+  container-type: size;
+  background-color: #dededc;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .art {
+    background-color: #31424a;
+  }
+}
+
+/*
+ * "Cover", capped so the Sāchu lock-up is never cut. The lock-up spans x 40–710 and y 640–1000
+ * of the 750x1630 image, centred, so the visible part of the image must stay at least 700 px
+ * wide and 400 px tall (the lock-up plus ~15 px). Rendered width =
+ *   min( cover = max(100% wide, 46.02% of the height [750/1630]),
+ *        107.14% wide [750/700], 187.5% of the height [750/400] ).
+ * Portrait screens (phones, tablets upright) get plain cover; only screens narrower than
+ * ~0.43:1 stop short of the edges. Landscape screens (desktops, tablets on their side) would
+ * need a 2x+ blow-up of this portrait image to cover, so there it is sized to the screen's
+ * height instead (below): the whole width shows, centred, near 1:1, and the fill colour carries
+ * on either side (the image's outer texture fades into it).
+ */
+.img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  height: auto;
+  width: min(max(100vw, 46.02vh), 107.14vw, 187.5vh);
+  width: min(max(100vw, 46.02dvh), 107.14vw, 187.5dvh);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+@supports (width: 1cqh) {
+  .img {
+    width: min(max(100cqw, 46.02cqh), 107.14cqw, 187.5cqh);
+  }
+}
+
+/* Landscape: as wide as the screen is tall (the image's full width, overflowing top and bottom
+   into plain texture; the lock-up keeps about a quarter of the height clear above and below
+   it). Same width as the portrait rule at exactly 1:1, so nothing jumps between the two.
+   Where the fill shows beside (or, below, around) the image, the image's own outer texture
+   fades into it. The fades stay inside the plain texture (the lock-up starts 5.3% in from each
+   side and 39% from the top), so the logo itself is never masked. */
+@media (min-aspect-ratio: 1/1) {
+  .img {
+    width: min(100vw, 100vh);
+    width: min(100vw, 100dvh);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+  }
+
+  @supports (width: 1cqh) {
+    .img {
+      width: min(100cqw, 100cqh);
+    }
+  }
+}
+
+@media (max-aspect-ratio: 859/2000) {
+  .img {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent);
+  }
+}
+
+/*
+ * The reveal. CSS-driven, so it runs from the server-rendered HTML and finishes even if
+ * JavaScript never does: hold 1.2 s, then a 0.8 s blur-out (blur leads, the fade follows, a
+ * slight push in), ending invisible and click-through. `both` holds the start state through the
+ * delay and the end state after. SplashReveal only skips ahead on a tap and unmounts it at the end.
+ */
+.reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  transform-origin: 50% 50%;
+  animation: splash-blur-out 0.8s cubic-bezier(0.45, 0, 0.25, 1) 1.2s both;
+  will-change: opacity, filter, transform;
+}
+
+@keyframes splash-blur-out {
+  from {
+    opacity: 1;
+    filter: blur(0px);
+    transform: scale(1);
+    visibility: visible;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    filter: blur(24px);
+    transform: scale(1.06);
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Reduced motion: no blur or zoom, a shorter hold and a plain fade. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: splash-fade-out 0.4s ease-out 0.6s both;
+    will-change: opacity;
+  }
+}
+
+@keyframes splash-fade-out {
+  from {
+    opacity: 1;
+    visibility: visible;
+  }
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

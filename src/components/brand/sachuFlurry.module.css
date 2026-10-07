@@ -1,0 +1,150 @@
+/*
+ * <SachuFlurry>: "SĀCHU" scattered in Enilas, the way the logo stacks it, as a decorative band
+ * for the home heroes. Each word is one empty span whose ::before draws the text, so the words
+ * never end up in copy/paste or find-in-page (the root is aria-hidden for screen readers).
+ * Brand tokens only, with the brand hex as a fallback (Tailwind only emits the theme
+ * variables its utilities use). The drift is opt-in via prefers-reduced-motion.
+ */
+
+.root {
+  position: relative;
+  overflow: hidden;
+  /* The layout table is drawn for a 9:4 box; font sizes are % of its width (cqw). */
+  aspect-ratio: 9 / 4;
+  container-type: inline-size;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: var(--font-display, var(--font-enilas), Georgia, serif);
+  font-weight: 400;
+  font-synthesis: none;
+  line-height: 1;
+  /* Rise out of the hero: the top of the band fades to nothing, so the words never crowd the
+     countdown / live panel above. The mask also makes the band clip its words to its own
+     rounded corners (Safari skips border-radius clipping of composited children otherwise). */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 40%);
+  mask-image: linear-gradient(to bottom, transparent, #000 40%);
+}
+
+/* Palettes. accent = coral, light = sand; each has a fill (solid words) and a line colour
+   (outlined words, drawn a step lighter so the thin strokes carry). */
+.coral {
+  --flurry-accent: var(--color-coral-400, #f68f77);
+  --flurry-accent-line: var(--color-coral-300, #f9ae9b);
+  --flurry-light: var(--color-sand-100, #f3eee5);
+  --flurry-light-line: var(--color-sand-50, #faf7f2);
+}
+
+/* Warmer and lighter for the Santo sky, whose horizon is already coral → ember: the coral
+   words step up to coral-200 so they still lift off the deep red. */
+.ember {
+  --flurry-accent: var(--color-coral-200, #fbcdbf);
+  --flurry-accent-line: var(--color-coral-200, #fbcdbf);
+  --flurry-light: var(--color-sand-50, #faf7f2);
+  --flurry-light-line: var(--color-sand-100, #f3eee5);
+}
+
+.word {
+  position: absolute;
+  white-space: nowrap;
+  color: var(--flurry-accent);
+  /* Fallback for browsers without container units: 1% of the hero's width, roughly. */
+  font-size: calc(var(--s) * min(0.92vw, 4.8px));
+}
+
+@supports (width: 1cqw) {
+  .word {
+    font-size: calc(var(--s) * 1cqw);
+  }
+}
+
+.light {
+  color: var(--flurry-light);
+}
+
+.word::before {
+  /* "SĀCHU" (U+0100, as in the logo). The space ends the escape and is not printed. */
+  content: "S\0100 CHU";
+  display: block;
+}
+
+/* Outlined like the logo's inline lettering: transparent fill, a stroke that thickens with the
+   word. Where text-stroke is unsupported the word stays solid, just softer. */
+.line::before {
+  opacity: 0.55;
+}
+
+.line {
+  color: var(--flurry-accent-line);
+}
+
+.line.light {
+  color: var(--flurry-light-line);
+}
+
+@supports (-webkit-text-stroke: 1px black) {
+  .line::before {
+    opacity: 1;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke-color: currentColor;
+    -webkit-text-stroke-width: 1px;
+    -webkit-text-stroke-width: max(1px, 0.026em);
+  }
+}
+
+/* Decorative only: in Windows high-contrast mode the words would all become system text. */
+@media (forced-colors: active) {
+  .root {
+    display: none;
+  }
+}
+
+/* ---- Motion (opt-in) --------------------------------------------------- */
+
+/* A slow drift, each word on its own period and phase (--t / --d, set per word), so the
+   band breathes without ever moving as a block. */
+@media (prefers-reduced-motion: no-preference) {
+  .word::before {
+    animation-duration: var(--t, 12s);
+    animation-delay: var(--d, 0s);
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+  }
+  .driftA::before {
+    animation-name: drift-a;
+  }
+  .driftB::before {
+    animation-name: drift-b;
+  }
+  .driftC::before {
+    animation-name: drift-c;
+  }
+}
+
+@keyframes drift-a {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(2px, -5px, 0);
+  }
+}
+
+@keyframes drift-b {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-3px, -3px, 0);
+  }
+}
+
+@keyframes drift-c {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(1px, 4px, 0);
+  }
+}

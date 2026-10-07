@@ -1,0 +1,12 @@
+// For tsx scripts that load server-only modules (src/lib/venue/aliasTable.ts): Next.js resolves
+// the "server-only" marker itself, tsx doesn't, so here it maps to an empty module. Used by
+// `npm run venue:import` (tsx --tsconfig scripts/tsconfig.server-only.json ...).
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../src/*"],
+      "server-only": ["./server-only-shim.ts"]
+    }
+  }
+}

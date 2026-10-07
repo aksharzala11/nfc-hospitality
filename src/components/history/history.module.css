@@ -1,0 +1,313 @@
+/*
+ * Edison Mandir History (/history): the timeline's line, dots, numerals and year strip, and the
+ * photo viewer's layout. Brand tokens only (the hex fallbacks are the same tokens).
+ *
+ * The photographs are sacred images: nothing in this file (or on the page) may put a transform,
+ * opacity, filter, mask, clip, animation, transition or an overflow other than visible on a
+ * photograph or on anything that contains one. What moves here are siblings of the photographs:
+ * the line (.rail), the dots, the year numerals and the strip.
+ */
+
+/* ── The line ─────────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * One rail per part, first in its block so the photo mats (later, positioned) paint over it.
+ * The coral that "draws" down it as you read is CSS only: .tip sticks half a screen below the
+ * scroller's top edge (the reading line), a coral column hangs upwards from it, and the rail
+ * clips that column to itself. Parts above the reading line are fully coral (the tip rests at
+ * its rail's end), the part on it is coral down to the line, parts below are sand (the tip sits
+ * at its rail's start with the column above it, clipped away). No script, no scroll listener.
+ * If position: sticky misbehaves in some in-app browser, delete .tip: the line is plain sand.
+ */
+.rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  width: 2px;
+  background: var(--color-sand-300, #dacfbb);
+  clip-path: inset(0);
+  pointer-events: none;
+}
+
+.tip {
+  position: sticky;
+  top: 50vh; /* before dvh (iOS < 15.4) */
+  top: 50dvh;
+  height: 0;
+}
+
+/* Only where the rail can clip it: unclipped, the column would run up the page. */
+@supports (clip-path: inset(0)) {
+  .tip::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Taller than any part of the timeline. */
+    height: 8000px;
+    background: var(--color-coral-500, #ec7762);
+  }
+}
+
+/* ── Dots and numerals ────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The base styles are the finished state (dots coral, numerals at rest), which is what shows
+ * without JavaScript and with reduced motion. HistoryNav sets data-live on the timeline once it
+ * has marked everything already above the reading line; only then are entries still below it
+ * unlit and numerals not yet seen dimmed. The transitions live on the arrived states, so
+ * dimming (on load) is instant and only arriving is animated.
+ */
+.dot {
+  position: absolute;
+  left: -23px;
+  top: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--color-coral-500, #ec7762);
+  /* A sand ring, so the dot reads as sitting on the line rather than fused with it. */
+  box-shadow: 0 0 0 3px var(--color-sand-100, #f3eee5);
+}
+
+.root[data-live] .entry:not([data-passed]) > .dot {
+  background: var(--color-sand-400, #c5b69c);
+}
+
+.root[data-live] .entry[data-passed] > .dot {
+  transition: background-color 0.3s ease-out;
+}
+
+/*
+ * A year's heading takes focus when the year strip jumps to it. The ring shows only after a
+ * jump made from the keyboard (HistoryJump sets data-keyboard-focus), never after a tap: a
+ * script-moved focus matches :focus-visible in some browsers whatever moved it.
+ */
+.yearHead {
+  outline: none;
+}
+
+.yearHead[data-keyboard-focus]:focus {
+  outline: 2px solid var(--color-ink-800, #2f4f60);
+  outline-offset: 4px;
+}
+
+.numeral {
+  display: inline-block;
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--color-ink-900, #213e4b);
+}
+
+.root[data-live] .yearHead:not([data-seen]) .numeral {
+  opacity: 0.4;
+  transform: translateY(16px);
+}
+
+.root[data-live] .yearHead[data-seen] .numeral {
+  transition:
+    opacity 0.5s ease-out,
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The ending leaves room for the reading line to reach the last entry on tall phones. */
+.ending {
+  min-height: calc(50vh - 6rem);
+  min-height: calc(50dvh - 6rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail {
+    background: var(--color-coral-500, #ec7762);
+  }
+  .tip {
+    display: none;
+  }
+}
+
+/* ── The year strip ───────────────────────────────────────────────────────────────────────── */
+
+.stripRow {
+  position: relative; /* the links' offsetParent, for centring the current year */
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.stripRow::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Photographs on the page ──────────────────────────────────────────────────────────────── */
+
+/*
+ * A photograph's button is the photograph's size: the mat's width, or less when that would make
+ * it taller than the space between the year strip and the bottom nav (the portrait one). 15rem
+ * is the header, the strip and the nav's band (209px) and some air; the safe areas come off too
+ * (an installed app on a notched phone). The width
+ * is worked out from the file's own aspect ratio (--photo-ratio = width / height, set inline),
+ * and the <img> fills it at that ratio (its width / height attributes), so the box is right
+ * before the file arrives and the page never shifts. The focus outline is the photograph's.
+ * Never narrower than 10rem: in a very short window (split screen) the photograph is then
+ * taller than the space and scrolls, rather than shrinking to nothing.
+ */
+.photoButton {
+  display: block;
+  width: min(100%, max(10rem, calc((100vh - 15rem) * var(--photo-ratio))));
+  width: min(
+    100%,
+    max(
+      10rem,
+      calc((100dvh - 15rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * var(--photo-ratio))
+    )
+  );
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── The photo viewer ─────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Full screen, every control outside the photograph: a top bar (count, Close), the stage, a
+ * bottom bar (caption, Previous / Next). The stage is a horizontal scroll-snap strip, one
+ * slide per photograph; each slide is a one-cell grid of a definite size, so the photograph's
+ * max-width / max-height resolve against it and the browser keeps the aspect ratio itself.
+ */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--color-ink-950, #142a33);
+  color: var(--color-sand-50, #faf7f2);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.viewerTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+}
+
+.stage {
+  display: flex;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  outline: none;
+}
+
+.stage::-webkit-scrollbar {
+  display: none;
+}
+
+.slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+
+/* The photograph and what stands in for it (loading, failed) share the slide's one cell. */
+.slide > * {
+  grid-area: 1 / 1;
+}
+
+.viewerPhoto {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.viewerBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem 0.75rem 1rem;
+}
+
+.viewerCaption {
+  min-width: 0;
+}
+
+.viewerArrows {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+/* "Turn your phone sideways": phones held upright only (not a tablet: it has no side column to
+   gain); an installed app is locked to portrait. PhotoViewer hides it for an upright photograph. */
+.viewerHint {
+  display: none;
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 520px) {
+  .viewerHint {
+    display: block;
+  }
+}
+
+@media (display-mode: standalone) {
+  .viewerHint {
+    display: none;
+  }
+}
+
+/* A phone on its side (the same test as the rotate guard, which the open viewer hides): the
+   controls move to a 72px column on the right and the photograph takes the rest. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .viewer {
+    grid-template-columns: minmax(0, 1fr) 72px;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .stage {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .viewerTop {
+    grid-column: 2;
+    grid-row: 1;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    padding: 0.5rem 0 0;
+  }
+  .viewerBottom {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 0 0.5rem;
+  }
+  .viewerArrows {
+    flex-direction: column;
+  }
+  /* The caption is the dialog's name too, so nothing is lost to a screen reader. */
+  .viewerCaption {
+    display: none;
+  }
+}

@@ -1,0 +1,337 @@
+@import "tailwindcss";
+
+/*
+ * The "Sāchu" 2027 Karyakar theme, NAAM 2026's branding (organisers' Brand Guide: Digital Assets/Brand Guide.pdf).
+ * Brand colours: ink #2f4f60, coral #f68f77, sand #e8e0d1.
+ * Brand gradients: teal  jade-500 #3d9283 → ink-800 #2f4f60   (bg-gradient-to-* from-jade-500 to-ink-800)
+ *                  coral coral-400 #f68f77 → coral-700 #c44147 (bg-gradient-to-* from-coral-400 to-coral-700)
+ * Fonts: Enilas (display, one weight) and Just Sans (variable 135–900), both self-hosted.
+ * Use only these families (plus white/black); Tailwind's default palette is off-brand.
+ */
+@theme {
+  /* Slate-teal: text, dark surfaces. 800 is the brand colour. */
+  --color-ink-50: #f2f6f8;
+  --color-ink-100: #e2eaee;
+  --color-ink-200: #c6d5dd;
+  --color-ink-300: #9eb5c2;
+  --color-ink-400: #6c8d9e;
+  --color-ink-500: #4b6d80;
+  --color-ink-600: #3b5d6f;
+  --color-ink-700: #355768;
+  --color-ink-800: #2f4f60;
+  --color-ink-900: #213e4b;
+  --color-ink-950: #142a33;
+
+  /* Coral: the accent. 400 and 700 are the brand gradient's two ends. */
+  --color-coral-50: #fef4f1;
+  --color-coral-100: #fde6e0;
+  --color-coral-200: #fbcdbf;
+  --color-coral-300: #f9ae9b;
+  --color-coral-400: #f68f77;
+  --color-coral-500: #ec7762;
+  --color-coral-600: #db5e50;
+  --color-coral-700: #c44147;
+  --color-coral-800: #a1353b;
+  --color-coral-900: #802b30;
+
+  /* Ember: the deep red end of the coral gradient, for strong accents and alerts. */
+  --color-ember-500: #c44147;
+  --color-ember-600: #a8363c;
+  --color-ember-700: #8a2c31;
+
+  /* Sand: canvas and quiet surfaces. 200 is the brand colour. */
+  --color-sand-50: #faf7f2;
+  --color-sand-100: #f3eee5;
+  --color-sand-200: #e8e0d1;
+  --color-sand-300: #dacfbb;
+  --color-sand-400: #c5b69c;
+  --color-sand-500: #a8977a;
+
+  /* Jade: the light end of the teal gradient; also "good / on time / early". */
+  --color-jade-50: #eef7f5;
+  --color-jade-100: #d6ece7;
+  --color-jade-200: #acd8ce;
+  --color-jade-300: #7cbdae;
+  --color-jade-400: #57a795;
+  --color-jade-500: #3d9283;
+  --color-jade-600: #33796d;
+  --color-jade-700: #2b6259;
+
+  --font-display: var(--font-enilas), "Georgia", serif;
+  --font-sans: var(--font-just-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(47 79 96 / 0.05), 0 8px 24px -8px rgb(47 79 96 / 0.16);
+  --shadow-card-lg: 0 2px 4px rgb(47 79 96 / 0.06), 0 20px 40px -16px rgb(47 79 96 / 0.26);
+  --shadow-glow: 0 10px 24px -8px rgb(219 94 80 / 0.5);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.55;
+      transform: scale(0.85);
+    }
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  /* Static UI: block pinch-zoom and double-tap zoom (iOS ignores the viewport flag). */
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* WebKit starts touch-action afresh at every scroll container (#app-scroll, the sheets, the
+   bell's list and reader, the chip rows), so the html rule alone lets zoom back in there.
+   Every element repeats it; in the base layer, so a touch-none utility (MoreSheet's drag
+   handle) still wins. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    touch-action: pan-x pan-y;
+  }
+}
+
+/*
+ * App shell. Every screen scrolls ONE container, #app-scroll (<AppScroll>, src/lib/scroll.ts),
+ * never the document. Telegram's iOS in-app browser lays the page out below its floating
+ * ✕ / address / ⋯ controls but doesn't clip it, so anything the document scrolls past the top
+ * keeps painting behind them; a scroll container clips its content at its own top edge (the
+ * header's bottom edge), so nothing can show up there.
+ *
+ *   <div class="app-shell">          full height, flex column, clips
+ *     <HubHeader />                   in flow at the top (not sticky)
+ *     <AppScroll> <main/> </AppScroll>  the one scroller (flex-1)
+ *     floating nav, back-to-top, overlays: position: fixed, outside the scroller
+ *
+ * While a shell is on the page the document itself is pinned: the same height as the viewport,
+ * no overflow, no rubber-band. :has() is iOS 15.4+ / Chrome 105+; without it the shell still
+ * fits the viewport, so the document has nothing to scroll anyway.
+ */
+html:has(#app-scroll),
+html:has(#app-scroll) body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  /* Vertical only: the x axis stays free for trackpad swipe back/forward. */
+  overscroll-behavior-y: none;
+}
+
+@layer components {
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* before dvh (iOS < 15.4) */
+    height: 100dvh;
+    /* Never taller than the pinned body, so there's no overflow for scrollIntoView() to chase. */
+    max-height: 100%;
+    overflow: hidden;
+  }
+  .app-scroll {
+    position: relative;
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    /* Bounce inside the container, never hand the gesture to the pinned document. */
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    /* WebKit starts touch-action afresh at every scroll container, so the html rule above
+       doesn't reach in here: repeat it, or iOS pinch / double-tap zoom comes back. */
+    touch-action: pan-x pan-y;
+    /* Focusable (tabindex -1, <AppScroll>) so desktop keys scroll it; no ring on the page. */
+    outline: none;
+  }
+  /* Classic desktop scrollbars now belong to the scroller, not the page. Where a header sits
+     above it, reserve the gutter on both sides so the page column stays centred under the
+     header's row, and nothing shifts when a sheet locks the scroller (overflow: hidden).
+     Overlay (phone) scrollbars take no space, so this does nothing there. */
+  .app-shell > header ~ .app-scroll {
+    scrollbar-gutter: stable both-edges;
+  }
+}
+
+/* Frosted sand glass used by the profile sheets: sand-50 fill, white rim, ink shadow. */
+.glass {
+  background: linear-gradient(135deg, rgb(250 247 242 / 0.8), rgb(250 247 242 / 0.46));
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 12px 32px -12px rgb(47 79 96 / 0.3),
+    0 2px 6px rgb(47 79 96 / 0.07);
+}
+
+/* Sand glass for the floating navbar. The content behind still shows through the
+   blur, but the sand fill is dense enough (0.85 at its thinnest) that the 11px labels
+   (ink-700, and the coral-800 / ember-700 / ink-900 active ones) keep AA contrast even
+   over an ink-950 panel scrolling underneath. Bright top rim, faint ink base line. */
+.glass-nav {
+  background: linear-gradient(135deg, rgb(250 247 242 / 0.92), rgb(250 247 242 / 0.85));
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.95),
+    inset 0 -1px 0 rgb(47 79 96 / 0.06),
+    0 14px 36px -12px rgb(47 79 96 / 0.34),
+    0 2px 8px rgb(47 79 96 / 0.08);
+}
+
+/* Per-view canvases, laid over the body's default (the delegate hub's coral-and-jade glow) by
+   a fixed -z-50 layer in the view's layout, below page decorations (ParallaxHeader glows, hero
+   art) at -z-10. Opaque, so the body glow doesn't mix in. */
+/* Pujya Santo view: deeper coral into ember from the top, a little ink at the foot. */
+.canvas-sant {
+  background-color: var(--color-sand-100);
+  background-image:
+    radial-gradient(40rem 22rem at 50% -8rem, rgb(219 94 80 / 0.2), transparent 70%),
+    radial-gradient(26rem 18rem at 0% 0%, rgb(196 65 71 / 0.11), transparent 70%),
+    radial-gradient(36rem 20rem at 100% 100%, rgb(47 79 96 / 0.08), transparent 65%);
+}
+/* Admin console: ink-forward, a cool ink wash from the top and the teal gradient's jade below. */
+.canvas-console {
+  background-color: var(--color-sand-100);
+  background-image:
+    radial-gradient(60rem 28rem at 50% -12rem, rgb(47 79 96 / 0.14), transparent 60%),
+    radial-gradient(40rem 20rem at 100% 100%, rgb(61 146 131 / 0.1), transparent 60%);
+}
+
+/* Parallax layers are transformed on scroll; keep them on the compositor. */
+.parallax-layer {
+  will-change: transform, opacity;
+}
+
+/* Scroll-reveal for timeline rows: hidden until they enter the viewport, then a quick,
+   gentle fade with a slight rise (no blur on the way in; rows leaving at the top keep
+   their scroll-linked blur-out in ScheduleView). */
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.3s ease-out,
+    transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+.reveal.is-visible[data-past] {
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+  .reveal[data-past] {
+    opacity: 0.55;
+  }
+}
+
+/* Portrait-only on phones: browsers can't lock orientation outside an installed
+   PWA, so when a touch device is turned sideways we cover the page and ask for
+   portrait instead. Tablets (taller landscape) are left alone. */
+.rotate-guard {
+  display: none;
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  .rotate-guard {
+    display: flex;
+  }
+}
+/* Except while the History page's photo viewer is open (PhotoViewer sets the attribute): a
+   photograph may be turned sideways for a larger view. */
+html[data-photo-viewer] .rotate-guard {
+  display: none;
+}
+
+body {
+  @apply bg-sand-100 text-ink-800 antialiased;
+  font-family: var(--font-sans);
+  /* Sand canvas with the brand's two gradients as faint glows: coral from the top, jade from below. */
+  background-image:
+    radial-gradient(60rem 30rem at 50% -12rem, rgb(246 143 119 / 0.2), transparent 60%),
+    radial-gradient(40rem 20rem at 100% 100%, rgb(61 146 131 / 0.12), transparent 60%);
+  background-attachment: fixed;
+  min-height: 100dvh;
+}
+
+/* Enilas ships one weight. Unlayered on purpose so it beats font-bold & co., and no synthetic
+   bold/italic: faux-bolded Enilas smears. Use it for headings and big numbers, Just Sans for UI. */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-synthesis: none;
+  letter-spacing: 0.005em;
+}
+
+/* The brand guide's wide-tracked uppercase Just Sans labels ("K A R Y A K A R  T H E M E"),
+   at UI scale. Pair with uppercase + a bold weight; size and colour stay per use. */
+@utility tracking-caps {
+  letter-spacing: 0.14em;
+}
+
+/* Brand artwork <img>s (src/components/brand/Sachu.tsx) carry their pixel size as width/height
+   attributes, which the browser would otherwise apply as a fixed width. In the base layer, so
+   any w-* / h-* class wins: size them by width OR height and the other follows the aspect. */
+@layer base {
+  .brand-art {
+    width: auto;
+    height: auto;
+  }
+}
+
+/* Subtle decorative pattern used behind hero areas */
+.pattern-mandala {
+  background-image: radial-gradient(circle at 1px 1px, rgb(47 79 96 / 0.09) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+/* Card surface */
+.card {
+  @apply rounded-3xl border border-white/70 bg-white/85 shadow-card backdrop-blur-sm;
+}
+
+.stagger > * {
+  animation: var(--animate-fade-up);
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(n + 7) { animation-delay: 360ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger > * {
+    animation: none;
+  }
+}

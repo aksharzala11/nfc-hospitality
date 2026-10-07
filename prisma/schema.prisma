@@ -1,0 +1,703 @@
+// Hospitality Hub data model.
+// `users` + `otp_codes` back the login flow; the remaining tables hold event content.
+// Table/column names are snake_case in Postgres (see @@map / @map).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum ScheduleKind {
+  ARTI
+  SESSION
+  BREAKOUT
+  MEAL
+  BREAK
+  TRAVEL
+  FREE
+}
+
+/// Who a schedule item applies to. Bhaio = gents track, Behno = ladies track.
+enum Audience {
+  ALL
+  BHAIO
+  BEHNO
+}
+
+/// Kind of account. DELEGATE uses the delegate hub (/dashboard ...); SANT is a
+/// Pujya Sant, who gets the separate /sant view (general + personal schedule,
+/// utaro, transport hotline) instead; ADMIN is an organiser who can also open
+/// the /admin console (delegate directory, announcements, live schedule).
+enum UserRole {
+  DELEGATE
+  SANT
+  ADMIN
+}
+
+model User {
+  id                   String     @id @default(cuid())
+  bapsId               String     @unique @map("baps_id")
+  /// Full name, e.g. "Upsham Naik".
+  name                 String
+  /// Optional name for the "Jay Swaminarayan {name}" greeting; falls back to `name`.
+  displayName          String?    @map("display_name")
+  seva                 String
+  email                String?
+  /// E.164, e.g. +18484829439
+  phone                String?
+  gender               Gender?
+  preferredChannel     OtpChannel @default(EMAIL) @map("preferred_channel")
+  /// Ids of rows in `breakouts` assigned to this user. Empty = not linked yet
+  /// (the app then falls back to breakouts matching the user's seva).
+  breakoutSessions     String[]   @default([]) @map("breakout_sessions")
+  region               String?
+  /// The organisers' registration "User Id" from the master list, as a trimmed
+  /// string (e.g. "12345"): the key that links a delegate to the organisers' other
+  /// data sources (goshthi groups, rooming, ...). The master-list import upserts
+  /// by it. Null for accounts not from the master list (testers, admins, santos).
+  registrationId       String?    @unique @map("registration_id")
+  /// Master list "Center".
+  center               String?
+  /// Master list "Personal Wing" (Yuvak, Premvati, Sanyukta, ...). The import takes
+  /// the gender track from it when it names one, else from `sevaWing`.
+  personalWing         String?    @map("personal_wing")
+  /// Master list "Seva Wing" as given: Bal, Kishore, Yuvak, EBKY (Bhaio) or
+  /// Balika, Kishori, Yuvati, IBKY (Behno). See src/lib/sevaMapping.ts.
+  sevaWing             String?    @map("seva_wing")
+  /// Master list "Seva" as given, e.g. "NA RC Lead". `seva` holds the breakout
+  /// team code this (sevaWing, sevaRole) pair maps to, or this raw text when it
+  /// maps to none (src/lib/sevaMapping.ts teamForSeva()).
+  sevaRole             String?    @map("seva_role")
+  /// Master list "Registration Status", e.g. "Registered",
+  /// "Pending Transportation Info" or "Refunded" (refunded registrations are
+  /// imported too, in case anything changes).
+  registrationStatus   String?    @map("registration_status")
+  /// The delegate's goshthi group, as the master-list import stores it from the
+  /// organisers' goshthi workbook (each group meets in its own room during the
+  /// Goshthi sessions). Bhaio: "Group 4", or "eBKY Group 3" when they are listed
+  /// under another wing than their own, read together with `sevaWing` and shown
+  /// via goshthiGroupLabel() ("Kishore Group 4"). Behno: "Goshthi Group 12"
+  /// (numbered across all of Behno), shown as given. Null = not assigned.
+  goshthiGroup         String?    @map("goshthi_group")
+  /// The room the delegate's goshthi group meets in, as the organisers name it
+  /// (e.g. "Yogi Hall"). Written by the master-list import with --goshthi only.
+  /// Null = no room given.
+  goshthiRoom          String?    @map("goshthi_room")
+  /// True when the delegate moderates their goshthi group (the workbook's
+  /// "Moderator:" row). Written by the master-list import with --goshthi only.
+  goshthiModerator     Boolean    @default(false) @map("goshthi_moderator")
+  /// Accommodation package from the transport workbook's "Fee Description", as
+  /// given, e.g. "Comfort - 2 to a room (Only NAAM)" or "No Accommodation".
+  /// Written only by `npm run transport:import` (by registration_id); a blank
+  /// cell never clears it. Null = not in the transport workbook.
+  accommodationPackage String?    @map("accommodation_package")
+  /// Tester accounts only: a fixed 6-digit code that is accepted (within the lockout
+  /// limits below) and suppresses the email/SMS send. Leave null for real delegates.
+  testCode             String?    @map("test_code")
+  /// Tester accounts: wrong test codes in a row, and the lockout they trigger (verifyOtp()).
+  testCodeFailures     Int        @default(0) @map("test_code_failures")
+  testCodeLockedUntil  DateTime?  @map("test_code_locked_until")
+  /// Lockouts in a row; TESTER_MAX_LOCKOUTS means locked until reset (src/lib/otp/constants.ts).
+  testCodeLockouts     Int        @default(0) @map("test_code_lockouts")
+  /// Tester accounts only (withMirror() in src/lib/auth.ts): whose data this account
+  /// shows. Honoured only for an account with a test_code, while the server has
+  /// ALLOW_MIRROR_TESTERS=true; sign-in, the name in the header and the
+  /// notification read state stay this account's own. No import writes it.
+  /// For a DELEGATE account: the registration_id ("User Id") of a real delegate,
+  /// honoured only while a DELEGATE with that registration_id exists; the delegate
+  /// hub (requireGuest()) then shows that delegate's track, seva, goshthi group,
+  /// breakouts, transport and stay. Set by `npm run testers:personas`.
+  /// For a SANT account: a BAPS ID instead (santos have no registration_id), of the
+  /// Pujya Sant whose programme, utaro, seva and region the Santo view then shows
+  /// (matched case-insensitively, honoured only while a SANT has that BAPS ID; user,
+  /// 2026-10-02). Set by `npm run sant:demo -- --mirror <BAPS ID>`.
+  /// Never honoured for ADMIN accounts.
+  mirrorRegistrationId String?    @map("mirror_registration_id")
+  /// When the user last opened the notification dropdown; newer items count as unread.
+  notificationsSeenAt  DateTime?  @map("notifications_seen_at")
+  /// DELEGATE (default), SANT or ADMIN. Santos are routed to /sant instead of the
+  /// delegate hub; admins use the delegate hub plus /admin.
+  role                 UserRole   @default(DELEGATE)
+  /// Set on every successful sign-in (null = never signed in).
+  lastSignInAt         DateTime?  @map("last_sign_in_at")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  otpCodes            OtpCode[]
+  /// ADMIN only: announcements they published and schedule changes they made.
+  notificationsSent   Notification[]
+  scheduleChanges     ScheduleChange[]
+  /// ADMIN only: email bounces they marked resolved (/admin/bounces).
+  emailEventsResolved EmailEvent[]
+  /// SANT only: personal programme (see SantScheduleItem).
+  santScheduleItems   SantScheduleItem[]
+  /// SANT only: the utaro this sant is placed at, shared with the other santos
+  /// placed there (see SantAccommodation). Null = not placed yet.
+  santAccommodationId String?            @map("sant_accommodation_id")
+  santAccommodation   SantAccommodation? @relation(fields: [santAccommodationId], references: [id], onDelete: SetNull)
+
+  @@index([santAccommodationId])
+  @@map("users")
+}
+
+enum NotificationKind {
+  MENU
+  SCHEDULE
+  TRANSPORT
+  GENERAL
+}
+
+/// Organiser announcements shown in the header bell. Menu-release notices are
+/// derived from meal times at read time and are not stored here.
+model Notification {
+  id          String           @id @default(cuid())
+  kind        NotificationKind @default(GENERAL)
+  title       String
+  body        String?
+  /// In-app path to open when tapped, e.g. "/schedule".
+  href        String?
+  /// Gender track: ALL, or only Bhaio (male) / only Behno (female) accounts.
+  audience    Audience         @default(ALL)
+  /// Optional targeting. Each list narrows the recipients; an empty list means
+  /// "no restriction" on that dimension (so all empty = everyone).
+  roles       UserRole[]       @default([])
+  sevas       String[]         @default([])
+  regions     String[]         @default([])
+  /// A personal announcement: the accounts (users.id) it is for. Non-empty =
+  /// it goes to exactly those accounts and nobody else; the track, roles,
+  /// sevas and regions above are then not used. Such a row is stored with
+  /// track ALL, no roles, and "(specific people)" as its only seva and region
+  /// (PERSONAL_MARK in src/lib/admin/announcements.ts), which no account has:
+  /// code that doesn't know this column then shows the row to no one. Empty =
+  /// the targeting above. No foreign key: a listed account that was deleted
+  /// simply reaches no one. Added 2026-10-02; until a database has the column
+  /// the app reads the bell without it (src/lib/notificationPeople.ts). In
+  /// hand-written SQL use '{}' for "no people", never NULL (a NULL row is in
+  /// nobody's bell).
+  userIds     String[]         @default([]) @map("user_ids")
+  /// Admin who published it (null for rows created with `npm run notify`).
+  createdById String?          @map("created_by_id")
+  createdBy   User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  /// Publish time: the row is visible from this moment, so a future value
+  /// schedules the announcement.
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+/// What Amazon SES reported about an email it couldn't deliver (see EmailEvent).
+enum EmailEventKind {
+  /// The receiving server refused it (bounceType Permanent = hard, Transient = soft).
+  BOUNCE
+  /// The recipient (or their provider) reported it as spam.
+  COMPLAINT
+  /// SES refused to send it at all (e.g. a virus found in it).
+  REJECT
+}
+
+/// One SES bounce, complaint or reject for one recipient of a sign-in email:
+/// the admin bounce tracker (/admin/bounces, src/lib/admin/emailEvents.ts).
+/// Written by the SNS endpoint /api/ses/events (source "sns": the
+/// `naam-hospitality-hub` configuration set's events, via SNS) and by
+/// `npm run ses:bounces -- --backfill` (source "suppression-list": the SES
+/// account suppression list entries of Hub accounts). Only what is needed to
+/// fix an address is kept: never the subject (it holds the sign-in code), the
+/// headers, the sender or the other recipients. A recipient's status is Open
+/// while any of its rows has no resolvedAt; a new event reopens it.
+model EmailEvent {
+  /// Stable, so a redelivered event is stored once: "<SES feedbackId, else
+  /// the SES message id>:<recipient>".
+  id            String         @id
+  kind          EmailEventKind
+  /// The bounced / complaining address, lower-cased.
+  recipient     String
+  /// BOUNCE only: "Permanent" (hard), "Transient" (soft) or "Undetermined".
+  bounceType    String?        @map("bounce_type")
+  /// BOUNCE only: SES's subtype, e.g. "General", "NoEmail", "MailboxFull",
+  /// "OnAccountSuppressionList" (SES didn't send: the address is suppressed).
+  bounceSubType String?        @map("bounce_sub_type")
+  /// The receiving server's reply for this recipient (action, status,
+  /// diagnostic code; a reject's reason), cleaned and cut short. Never message content.
+  diagnostic    String?
+  /// COMPLAINT only: the feedback type, e.g. "abuse", or SES's subtype.
+  complaintType String?        @map("complaint_type")
+  /// SES's id of the email (null when the suppression list gave none).
+  sesMessageId  String?        @map("ses_message_id")
+  /// When it happened, per SES.
+  occurredAt    DateTime       @map("occurred_at")
+  receivedAt    DateTime       @default(now()) @map("received_at")
+  /// "sns" or "suppression-list".
+  source        String         @default("sns")
+  /// Set by an admin's "Mark resolved" (for every open row of the recipient).
+  resolvedAt    DateTime?      @map("resolved_at")
+  resolvedById  String?        @map("resolved_by_id")
+  resolvedBy    User?          @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+  /// The admin's short note, e.g. "Email corrected in the directory".
+  note          String?
+
+  @@index([recipient])
+  @@index([occurredAt])
+  @@map("email_events")
+}
+
+model OtpCode {
+  id          String     @id @default(cuid())
+  userId      String     @map("user_id")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash    String     @map("code_hash")
+  channel     OtpChannel
+  /// Masked destination shown to the user, e.g. "up•••@outlook.com".
+  destination String
+  expiresAt   DateTime   @map("expires_at")
+  attempts    Int        @default(0)
+  consumedAt  DateTime?  @map("consumed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("otp_codes")
+}
+
+model ScheduleItem {
+  id               String       @id @default(cuid())
+  title            String
+  description      String?
+  location         String?
+  kind             ScheduleKind
+  audience         Audience     @default(ALL)
+  startsAt         DateTime     @map("starts_at")
+  endsAt           DateTime     @map("ends_at")
+  sortOrder        Int          @default(0) @map("sort_order")
+  /// Printed times, captured the first time an admin moves the item from
+  /// /admin/schedule (null = never moved). Used for "reset" and delay badges.
+  originalStartsAt DateTime?    @map("original_starts_at")
+  originalEndsAt   DateTime?    @map("original_ends_at")
+
+  meal Meal?
+
+  @@index([startsAt])
+  @@map("schedule_items")
+}
+
+/// Whose Menu page a meal belongs to: the delegate hub (/menu; admins too) or the
+/// Pujya Santo view (/sant/menu), which has its own menu.
+enum MenuFor {
+  DELEGATE
+  SANT
+}
+
+model Meal {
+  id               String        @id @default(cuid())
+  /// DELEGATE (default) or SANT. Each view only ever reads its own meals.
+  menuFor          MenuFor       @default(DELEGATE) @map("menu_for")
+  /// Optional link to the timeline slot (e.g. "Delegate Breakfast"). Meals
+  /// served outside the programme (arrival dinner, departure lunch) have none.
+  scheduleItemId   String?       @unique @map("schedule_item_id")
+  scheduleItem     ScheduleItem? @relation(fields: [scheduleItemId], references: [id], onDelete: SetNull)
+  name             String
+  note             String?
+  location         String?
+  startsAt         DateTime      @map("starts_at")
+  endsAt           DateTime      @map("ends_at")
+  /// Printed times before any live adjustment (see ScheduleItem.originalStartsAt).
+  /// A linked meal moves with its schedule slot, which also moves its menu reveal.
+  originalStartsAt DateTime?     @map("original_starts_at")
+  originalEndsAt   DateTime?     @map("original_ends_at")
+
+  items MenuItem[]
+
+  @@index([startsAt])
+  @@index([menuFor, startsAt])
+  @@map("meals")
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  mealId      String   @map("meal_id")
+  meal        Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  course      String
+  name        String
+  description String?
+  tags        String[] @default([])
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  @@index([mealId, sortOrder])
+  @@map("menu_items")
+}
+
+/// Team breakout sessions. The real ones come from prisma/breakouts-data.ts
+/// (`npm run breakouts:sync`): one row per team per track, id
+/// "bk-<track>-<day>-<HHMM>-<team>". Mock rows (SEED_MOCK_DATA) have cuid ids and
+/// the Santo sample rows "sample-*" ids; the sync never touches either.
+model Breakout {
+  id               String    @id @default(cuid())
+  /// Canonical team code this session is for, e.g. "BM RA" or "BK RPCs & RGCs"
+  /// (see src/lib/teams.ts). Used as a fallback when a user has no explicit
+  /// `breakout_sessions` links: the session shows to users whose seva means this
+  /// team (teamCodesFor()). Mock and Santo sample rows hold a plain seva instead.
+  seva             String?
+  /// Gender track, as on schedule items: BHAIO sessions show to men, BEHNO to
+  /// women, ALL to everyone (santos follow Bhaio; no gender on file = both).
+  /// Mock and Santo sample rows keep ALL.
+  audience         Audience  @default(ALL)
+  title            String
+  description      String?
+  room             String
+  facilitator      String?
+  startsAt         DateTime  @map("starts_at")
+  endsAt           DateTime  @map("ends_at")
+  /// Printed times before any live adjustment (see ScheduleItem.originalStartsAt).
+  originalStartsAt DateTime? @map("original_starts_at")
+  originalEndsAt   DateTime? @map("original_ends_at")
+
+  @@index([seva, startsAt])
+  @@map("breakouts")
+}
+
+// ---------------------------------------------------------------------------
+// Admin console (users.role = ADMIN)
+// ---------------------------------------------------------------------------
+
+enum ScheduleChangeAction {
+  /// Start and end moved by deltaMinutes (a delay, or brought forward).
+  SHIFT
+  /// End moved by deltaMinutes (a session ran over / finished early).
+  EXTEND
+  /// Exact start/end times entered by hand.
+  EDIT
+  /// Times put back to the printed schedule.
+  RESET
+  /// A previous change reversed.
+  UNDO
+}
+
+/// Audit trail of live schedule adjustments made from /admin/schedule. The id
+/// lists record exactly which rows moved so a change can be undone.
+model ScheduleChange {
+  id           String               @id @default(cuid())
+  createdAt    DateTime             @default(now()) @map("created_at")
+  /// Admin who made the change (null if that account was deleted).
+  userId       String?              @map("user_id")
+  user         User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action       ScheduleChangeAction
+  /// Event day the change applies to, YYYY-MM-DD in EVENT_TZ.
+  day          String
+  /// Human-readable, e.g. "Keynote Program 2 + 6 later items: +15 min".
+  summary      String
+  deltaMinutes Int?                 @map("delta_minutes")
+  itemIds      String[]             @default([]) @map("item_ids")
+  mealIds      String[]             @default([]) @map("meal_ids")
+  breakoutIds  String[]             @default([]) @map("breakout_ids")
+  /// Per-row before/after times of everything this change moved (shape defined
+  /// in src/lib/admin/schedule.ts). Undo subtracts each row's own deltas, so it
+  /// composes with later changes and also covers hand-edited times.
+  snapshot     Json?
+  /// Set when this change has been undone.
+  undoneAt     DateTime?            @map("undone_at")
+
+  @@index([createdAt])
+  @@map("schedule_changes")
+}
+
+// ---------------------------------------------------------------------------
+// Pujya Santo view (users.role = SANT). Read through src/lib/sant.ts.
+// ---------------------------------------------------------------------------
+
+/// One entry in a sant's personal programme (pickups, puja, meetings,
+/// pravachans), shown next to the general schedule. Deleted with the user.
+/// The real santos' rows (ids "sp-*") are written only by `npm run
+/// sant:personal:sync` from prisma/sant-personal-data.ts (see
+/// prisma/sant-personal.ts); `npm run sant:demo` writes the tester SANTO0001's.
+model SantScheduleItem {
+  id          String       @id @default(cuid())
+  userId      String       @map("user_id")
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  location    String?
+  /// Same kinds as the general schedule so the UI reuses its icons.
+  kind        ScheduleKind @default(SESSION)
+  startsAt    DateTime     @map("starts_at")
+  endsAt      DateTime     @map("ends_at")
+  sortOrder   Int          @default(0) @map("sort_order")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@index([userId, startsAt])
+  @@map("sant_schedule_items")
+}
+
+/// The Pujya Santo general schedule (Mon Oct 5 - Thu Oct 15), the "General" tab
+/// of /sant/schedule and the Santo home's clock and tiles. Written only by the
+/// sync (`npm run sant:schedule:sync`, also run by the seed) from
+/// prisma/sant-schedule-data.ts; see prisma/sant-schedule.ts. Separate from
+/// `schedule_items`: the admin live-schedule engine never moves these rows, so
+/// they have no printed-time columns.
+model SantGeneralScheduleItem {
+  /// Stable, from day + start + title: "ss-2026-10-09-0915-keynote-program-1".
+  id          String       @id
+  title       String
+  description String?
+  location    String?
+  /// Same kinds as the general schedule so the UI reuses its icons.
+  kind        ScheduleKind
+  startsAt    DateTime     @map("starts_at")
+  endsAt      DateTime     @map("ends_at")
+  /// Position in the data file (day, then start).
+  sortOrder   Int          @map("sort_order")
+
+  @@index([startsAt])
+  @@map("sant_general_schedule_items")
+}
+
+/// An utaro (where santos stay during the event), shared by one or more santos:
+/// each sant's users.sant_accommodation_id points here. Santos are hosted, not
+/// checked in like hotel guests, so there is no room or check-in/out. Deleting
+/// an utaro leaves its santos unplaced. Managed with `npm run sant:utaro`.
+model SantAccommodation {
+  id           String  @id @default(cuid())
+  /// Residence or place name, e.g. "Patel residence".
+  placeName    String  @map("place_name")
+  /// Kept for the organisers' records only: the Santo view no longer reads or shows it.
+  address      String?
+  hostName     String? @map("host_name")
+  /// E.164, e.g. +17325550117
+  hostPhone    String? @map("host_phone")
+  /// The host's Telegram username (no "@"), or "+" and an E.164 number: src/lib/telegram.ts.
+  /// Added 2026-10-06; the Santo view reads it only once the schema is pushed (src/lib/sant.ts).
+  hostTelegram String? @map("host_telegram")
+  notes        String?
+
+  /// The santos placed here.
+  santos User[]
+
+  @@map("sant_accommodations")
+}
+
+/// What a delegate's help contact is about: STAY lines show on /stay,
+/// TRANSPORT lines on /transportation, GENERAL lines on both.
+enum HotlineTopic {
+  GENERAL
+  STAY
+  TRANSPORT
+}
+
+/// Phone lines shown in the app to one kind of account: the santos' transport
+/// hotline (role SANT), and the delegates' help contacts on /stay and
+/// /transportation (role DELEGATE, picked by topic and track in
+/// src/lib/helpContacts.ts). Lower sortOrder is shown first. Names and phones
+/// live only here, set with `npm run hotlines` (never in the repo).
+model Hotline {
+  id           String       @id @default(cuid())
+  /// What the card is headed, e.g. "Accommodation", "Transportation".
+  label        String
+  contactName  String?      @map("contact_name")
+  /// E.164, e.g. +17325550142 (used for tel: links).
+  phone        String
+  /// Free text, e.g. "24/7 during NAAM" or "6 AM – 11 PM".
+  availability String?
+  /// Telegram username (no "@"), or "+" and an E.164 number: src/lib/telegram.ts. Shown as a
+  /// "Message on Telegram" button on the Santo pages. Added 2026-10-06; read only once the
+  /// schema is pushed (src/lib/sant.ts).
+  telegram     String?
+  /// Which accounts see this line.
+  role         UserRole     @default(SANT)
+  /// DELEGATE lines only: which page shows it (the Santo pages ignore it).
+  topic        HotlineTopic @default(GENERAL)
+  /// DELEGATE lines only: whose contact it is, BHAIO (gents), BEHNO (ladies)
+  /// or ALL (both tracks). The Santo pages ignore it.
+  audience     Audience     @default(ALL)
+  sortOrder    Int          @default(0) @map("sort_order")
+
+  @@map("hotlines")
+}
+
+/// A hotel's point of contact from the rooming team, shown as "Hotel Liaison"
+/// on /stay to the delegates staying there (src/lib/hotelLiaisons.ts) and on
+/// the admin rooming board. A hotel can have several per track. Names and
+/// phones live only here, set with `npm run hotel:liaisons` (never in the repo).
+model HotelLiaison {
+  id        String   @id @default(cuid())
+  /// A src/lib/hotels.ts key: hampton | courtyard | doubletree | hilton.
+  hotel     String
+  /// Whose liaison: BHAIO (gents), BEHNO (ladies) or ALL (everyone at the hotel).
+  audience  Audience @default(ALL)
+  name      String
+  /// E.164, e.g. +17325550142 (used for tel: links).
+  phone     String
+  sortOrder Int      @default(0) @map("sort_order")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([hotel, audience])
+  @@map("hotel_liaisons")
+}
+
+// ---------------------------------------------------------------------------
+// Transport (airport pickups and drop-offs). Written only by
+// `npm run transport:import` (scripts/import-transport.ts, rules in
+// src/lib/transportImport.ts); read through src/lib/transport.ts.
+// ---------------------------------------------------------------------------
+
+enum TransportDirection {
+  ARRIVAL
+  DEPARTURE
+}
+
+/// One person's arrival or departure, from the organisers' transport workbook:
+/// at most one leg per person and direction. Linked to `users` by the master
+/// list "User Id" (users.registration_id), deliberately NOT a foreign key: the
+/// workbook also lists people not (yet) imported as users, and a leg must
+/// survive a user being re-imported. The (registration_id, direction) unique
+/// index also serves lookups by registration_id.
+model TransportLeg {
+  /// Stable: "<registrationId>-arrival" / "<registrationId>-departure".
+  id             String             @id
+  registrationId String             @map("registration_id")
+  direction      TransportDirection
+  /// "FLYING" or "DRIVING" (anything else is kept as given and flagged by the import).
+  mode           String?
+  /// Needs an airport pickup (ARRIVAL) / drop-off (DEPARTURE): the sheet's
+  /// Yes / No; null = left blank.
+  needsService   Boolean?           @map("needs_service")
+  /// IATA code, e.g. "PHL", "EWR", "YYC".
+  airportCode    String?            @map("airport_code")
+  /// e.g. "Philadelphia International Airport" (null when the sheet gave only a code).
+  airportName    String?            @map("airport_name")
+  /// Wall-clock date and time AT THAT AIRPORT, as the sheet gives them (never
+  /// converted between time zones): "YYYY-MM-DD" and "HH:MM" (24 h).
+  localDate      String?            @map("local_date")
+  localTime      String?            @map("local_time")
+  /// localDate + localTime read as Eastern (EVENT_TZ) wall-clock: for sorting
+  /// only (off by the zone difference at a non-Eastern airport). Midnight when
+  /// only the date is known.
+  sortAt         DateTime?          @map("sort_at")
+  airline        String?
+  /// As given, e.g. "UA 1234" or "1234"; null when blank or a placeholder ("TBD", "Na").
+  flight         String?
+  /// The transport team's pickup / drop-off group, numbered per airport and day.
+  groupNumber    Int?               @map("group_number")
+  /// Group identity: "<direction>-<airport>-<local date>-<number>", e.g.
+  /// "arrival-PHL-2026-10-08-3". Group size = legs sharing it.
+  groupKey       String?            @map("group_key")
+  driverName     String?            @map("driver_name")
+  /// E.164, e.g. +17325550142.
+  driverPhone    String?            @map("driver_phone")
+  /// Worksheet that supplied the leg's flight details, e.g. "Arrival PHL 8th Pickup".
+  sourceSheet    String?            @map("source_sheet")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  @@unique([registrationId, direction])
+  @@index([groupKey])
+  @@index([direction, localDate, airportCode])
+  @@map("transport_legs")
+}
+
+// ---------------------------------------------------------------------------
+// Rooming (hotel room groups). Written only by `npm run rooming:import`
+// (scripts/import-rooming.ts, rules in src/lib/roomingImport.ts); read through
+// src/lib/rooming.ts. Hotel names and details live in src/lib/hotels.ts.
+// ---------------------------------------------------------------------------
+
+/// Which nights a room assignment covers. WED = the night of Wed, Oct 7 (early
+/// arrivals: the "eBKY Hampton Wednesday" tab); MAIN = from Thu, Oct 8 (every
+/// other hotel tab). Someone who keeps their Wednesday room has a row for each.
+enum RoomStay {
+  WED
+  MAIN
+}
+
+/// One person's room group for one stay, from the organisers' rooming
+/// workbook: at most one per person and stay. Linked to `users` by the master
+/// list "User Id" (users.registration_id), deliberately NOT a foreign key: the
+/// workbook also lists people not (yet) imported as users, and an assignment
+/// must survive a user being re-imported. The (registration_id, stay) unique
+/// index also serves lookups by registration_id.
+model RoomAssignment {
+  /// Stable: "<registrationId>-wed" / "<registrationId>-main".
+  id             String   @id
+  registrationId String   @map("registration_id")
+  stay           RoomStay
+  /// Hotel key from src/lib/hotels.ts: "hampton", "courtyard", "doubletree", "hilton".
+  hotel          String
+  /// The organisers' room ASSIGNMENT number ("Mock Room"), numbered per hotel:
+  /// shown as "Room group N", never as a hotel room number (those come at check-in).
+  roomNumber     Int      @map("room_number")
+  /// The sheet's "Bed" within the room group; null when blank.
+  bed            Int?
+  /// Room group identity "<stay>-<hotel>-<roomNumber>", e.g. "MAIN-hampton-12".
+  /// Roommates are the rows sharing it.
+  roomKey        String   @map("room_key")
+  /// Beds in the room group per the sheet, filled or open (the same on every row of the group).
+  roomCapacity   Int      @map("room_capacity")
+  /// Beds in the room group with no User Id in the sheet (open beds).
+  roomOpenBeds   Int      @map("room_open_beds")
+  /// Worksheet the row came from, e.g. "eBKY Courtyard".
+  sourceSheet    String   @map("source_sheet")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([registrationId, stay])
+  @@index([roomKey])
+  @@map("room_assignments")
+}
+
+/// One room group for one stay, from the organisers' rooming workbook, whoever
+/// is in it: the import writes one for every room group, including one nobody
+/// could be placed in (every bed open, or held by a User Id on two bed rows),
+/// so the admin board shows every room the organisers booked. Its people are
+/// the room_assignments rows with the same room_key.
+model RoomGroup {
+  /// "<stay>-<hotel>-<roomNumber>", e.g. "MAIN-hampton-12" (room_assignments.room_key).
+  roomKey             String   @id @map("room_key")
+  stay                RoomStay
+  /// Hotel key from src/lib/hotels.ts.
+  hotel               String
+  /// The organisers' room ASSIGNMENT number ("Room group N"), not a hotel room number.
+  roomNumber          Int      @map("room_number")
+  /// Bed rows in the sheet, filled or open.
+  capacity            Int
+  /// Bed rows with no User Id.
+  openBeds            Int      @map("open_beds")
+  /// Bed rows of User Ids the import skipped (on more than one bed row in the stay).
+  heldBeds            Int      @map("held_beds")
+  /// The User Id on each held bed row, in bed order (one twice when it holds two beds here).
+  heldRegistrationIds String[] @map("held_registration_ids")
+  /// Worksheet the room group came from, e.g. "eBKY Courtyard".
+  sourceSheet         String   @map("source_sheet")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([stay, hotel])
+  @@map("room_groups")
+}
+
+/// The venue map (src/lib/venue/types.ts VenueMapData): the Edison mandir's public
+/// floors, walls, rooms, stairs / elevators and walkable grid, generated from the
+/// organisers' blueprint by scripts/venue/extract.py and stored here by
+/// `npm run venue:import` (row "current" only). The blueprint and the JSON never go
+/// in the repo or /public: the hub reads this row (src/lib/venue/data.ts) and sends
+/// signed-in pages only the public rooms by name (toClientVenue()).
+model VenueMap {
+  /// Always "current": one map, replaced by each import.
+  id          String   @id @default("current")
+  /// VenueMapData, validated by the import (src/lib/venue/validate.ts).
+  data        Json
+  /// The blueprint's file name (never its path), as in data.source.
+  source      String
+  /// When the extraction ran (data.generatedAt).
+  generatedAt DateTime @map("generated_at")
+  importedAt  DateTime @default(now()) @map("imported_at")
+
+  @@map("venue_maps")
+}

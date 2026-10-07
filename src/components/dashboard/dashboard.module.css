@@ -1,0 +1,139 @@
+/*
+ * Home page (dashboard) art direction in the NAAM 2026 "Sāchu" brand: the hero panel
+ * and the glow under its Sāchu flurry (<SachuFlurry>, styled in its own module), the tile
+ * textures and the small motion accents.
+ *
+ * Brand colours only. Solid colours use the theme tokens with the brand hex as a
+ * fallback (Tailwind only emits the variables its utilities use); translucent ones use
+ * the raw brand rgb(): ink 47 79 96, ink-950 20 42 51, coral 246 143 119, coral-700
+ * 196 65 71, jade 61 146 131, sand 232 224 209. Every animation is opt-in via
+ * `prefers-reduced-motion: no-preference`, so reduced-motion users get the same page,
+ * just still.
+ */
+
+/* ---- Hero ------------------------------------------------------------- */
+
+/* The guide's ink panel with coral display type: brand ink where the greeting sits,
+   settling into ink-900 towards the bottom so the coral light below reads as light.
+   The delegate home is ink + coral (the admin console's hero is the ink → jade TEAL
+   gradient, so the two front doors stay distinct). A faint coral wash warms the
+   top-right corner. */
+.hero {
+  background-color: var(--color-ink-800, #2f4f60);
+  background-image:
+    radial-gradient(60% 30% at 100% 0%, rgb(246 143 119 / 0.13), transparent 70%),
+    linear-gradient(180deg, var(--color-ink-800, #2f4f60) 30%, var(--color-ink-900, #213e4b) 100%);
+}
+
+/* Coral light the Sāchu flurry rises out of, like the coral figure seated in the chhatri:
+   the CORAL gradient (coral-400 → coral-700) as light, filling the flurry band. Sized to
+   the band (plus a margin above it) and fully transparent before the box edges, so there
+   are no seams. */
+.glow {
+  background: radial-gradient(
+    52% 56% at 50% 62%,
+    rgb(246 143 119 / 0.75),
+    rgb(196 65 71 / 0.35) 60%,
+    transparent 80%
+  );
+}
+
+/* ---- Tile textures ----------------------------------------------------- */
+
+/* Fine dot grid on the ink Schedule tile. */
+.dots {
+  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.08) 1px, transparent 0);
+  background-size: 16px 16px;
+}
+
+/* Coral jali dots on the deep-ink History tile. */
+.jali {
+  background-image: radial-gradient(circle at 1px 1px, rgb(246 143 119 / 0.16) 1px, transparent 0);
+  background-size: 14px 14px;
+}
+
+/* Prasang card: ruled journal paper. Faint ink rules every 1.5rem, faded in from the
+   top so the heading sits on clean paper (the margin line is coral). */
+.ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(1.5rem - 1px),
+    rgb(47 79 96 / 0.1) calc(1.5rem - 1px) 1.5rem
+  );
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
+  mask-image: linear-gradient(to bottom, transparent, #000 45%);
+}
+
+/* Light sweep across the Menu tile while a menu is out. Parked off-tile when still. */
+.sheen::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.2), transparent);
+  transform: translateX(-160%) skewX(-12deg);
+  pointer-events: none;
+}
+
+/* ---- Motion (opt-in) --------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow {
+    animation: breathe 7s ease-in-out infinite;
+  }
+  .digit {
+    animation: digit-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .phaseIn {
+    animation: phase-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .sheen::after {
+    animation: sheen 6s ease-in-out 1.5s infinite;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes digit-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.4em);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes phase-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheen {
+  0% {
+    transform: translateX(-160%) skewX(-12deg);
+  }
+  35%,
+  100% {
+    transform: translateX(330%) skewX(-12deg);
+  }
+}

@@ -1,0 +1,18 @@
+# Local Postgres for development. Production uses an Amazon Lightsail managed
+# PostgreSQL database (see README.md for sizing guidance).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hospitality-hub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub
+      POSTGRES_DB: hospitality_hub
+    ports:
+      - "5432:5432"
+    volumes:
+      - hub_pgdata:/var/lib/postgresql/data
+
+volumes:
+  hub_pgdata:

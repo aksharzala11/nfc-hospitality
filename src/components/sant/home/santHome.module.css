@@ -1,0 +1,187 @@
+/*
+ * Pujya Santo home (/sant) art direction, in the NAAM 2026 "Sāchu" brand: an
+ * ink night falling into a coral → ember sandhya behind the Sāchu flurry
+ * (<SachuFlurry tone="ember">, styled in its own module), sand stars, soft
+ * coral rays and a coral glow on the horizon, plus the tile textures. Brand
+ * tokens only (var(--color-*), white/black with alpha). Every animation is
+ * opt-in via `prefers-reduced-motion: no-preference`, so reduced-motion users
+ * get the same page, just still.
+ *
+ * Its own module (not the delegate home's dashboard.module.css) so the two
+ * homes can evolve separately.
+ */
+
+/* ---- Hero sky ---------------------------------------------------------- */
+
+/* Sandhya over the Sāchu flurry: ink-950 at the top where the stars are, through
+   ink-900 and ink-800, into an ember horizon with a coral heart. The first
+   layer darkens the very bottom edge under the flurry; the corner lift keeps the
+   top of the night from reading flat. The greeting and clock sit on the ink
+   part, so their contrast never depends on the glow. */
+.sky {
+  background-color: var(--color-ink-950);
+  background-image:
+    linear-gradient(to top, color-mix(in oklab, var(--color-ink-950) 75%, transparent), transparent 16%),
+    radial-gradient(90% 22% at 50% 100%, color-mix(in oklab, var(--color-coral-600) 50%, transparent), transparent 80%),
+    radial-gradient(150% 46% at 50% 100%, color-mix(in oklab, var(--color-coral-700) 92%, transparent), transparent 80%),
+    radial-gradient(80% 42% at 92% -8%, color-mix(in oklab, var(--color-ink-600) 55%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--color-ink-950) 0%, var(--color-ink-900) 30%, var(--color-ink-800) 60%);
+}
+
+/* Coral light the flurry rises out of. Sized to the flurry band (plus a
+   margin above it) and fully transparent before its edges, so no seams. */
+.glow {
+  background: radial-gradient(
+    60% 55% at 50% 58%,
+    color-mix(in oklab, var(--color-coral-400) 60%, transparent),
+    color-mix(in oklab, var(--color-coral-700) 25%, transparent) 55%,
+    transparent 80%
+  );
+}
+
+/* Faint rays fanning up from the horizon. The box's bottom edge is the
+   origin, so only the upper half of the fan is ever drawn; the mask fades the
+   rays out long before they reach the greeting. Soft ray edges avoid jaggies. */
+.rays {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 100%,
+    color-mix(in oklab, var(--color-coral-200) 14%, transparent) 0deg 1.5deg,
+    transparent 3deg 9deg
+  );
+  -webkit-mask-image: radial-gradient(75% 100% at 50% 100%, #000 12%, rgb(0 0 0 / 0.45) 45%, transparent 82%);
+  mask-image: radial-gradient(75% 100% at 50% 100%, #000 12%, rgb(0 0 0 / 0.45) 45%, transparent 82%);
+}
+
+.star {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--color-sand-50);
+  opacity: 0.75;
+  box-shadow: 0 0 6px color-mix(in oklab, var(--color-sand-50) 60%, transparent);
+}
+
+/* ---- Tile textures ----------------------------------------------------- */
+
+/* Fine white dots: the jali over the My schedule tile. */
+.jali {
+  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.12) 1px, transparent 0);
+  background-size: 14px 14px;
+}
+
+/* Breakouts tile: the brand's teal gradient (jade into ink) as a sabha hall,
+   with a soft jade lamp in the corner its rows of seats face. The text sits
+   in the lower, darker half. */
+.sabha {
+  background-color: var(--color-ink-800);
+  background-image:
+    radial-gradient(90% 60% at 86% 14%, color-mix(in oklab, var(--color-jade-300) 24%, transparent), transparent 70%),
+    linear-gradient(170deg, var(--color-jade-500) 0%, var(--color-jade-700) 48%, var(--color-ink-800) 100%);
+}
+
+/* The Breakouts tile's rows of seats fade out away from the arrow they face. */
+.seats {
+  -webkit-mask-image: radial-gradient(closest-side, #000 38%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 38%, transparent 100%);
+}
+
+/* Light sweep across the Menu tile while a meal is being served. Parked off-tile when still. */
+.sheen::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.32), transparent);
+  transform: translateX(-160%) skewX(-12deg);
+  pointer-events: none;
+}
+
+/* ---- Motion (opt-in) --------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .glow {
+    animation: breathe 8s ease-in-out infinite;
+  }
+  .rays {
+    animation: rays 12s ease-in-out infinite;
+  }
+  .star {
+    animation: twinkle 4.2s ease-in-out infinite;
+  }
+  .digit {
+    animation: digit-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .phaseIn {
+    animation: phase-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .sheen::after {
+    animation: sheen 6s ease-in-out 1.5s infinite;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes rays {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes digit-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.4em);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes phase-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheen {
+  0% {
+    transform: translateX(-160%) skewX(-12deg);
+  }
+  35%,
+  100% {
+    transform: translateX(330%) skewX(-12deg);
+  }
+}

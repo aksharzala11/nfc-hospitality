@@ -1,0 +1,90 @@
+/*
+ * Venue map sizes that stay constant on screen while the plan zooms: --inv (set on the <svg> by
+ * usePanZoom) is 1 / (screen px per map unit). Colours come from Tailwind brand classes in the
+ * components; only sizes, transforms and the route animation live here.
+ */
+.canvas {
+  --inv: 1;
+}
+
+.walls {
+  stroke-width: calc(1.6px * var(--inv));
+}
+
+.roomEdge {
+  stroke-width: calc(0.8px * var(--inv));
+}
+
+.roomEdgeStrong {
+  stroke-width: calc(2.2px * var(--inv));
+}
+
+.label {
+  font-size: calc(11px * var(--inv));
+  font-weight: 650;
+  paint-order: stroke;
+  stroke-width: calc(3.2px * var(--inv));
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.labelSmall {
+  font-size: calc(9.5px * var(--inv));
+  font-weight: 600;
+  paint-order: stroke;
+  stroke-width: calc(3px * var(--inv));
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* A marker drawn in screen px around its own origin (a translate() on its parent). */
+.marker {
+  transform: scale(var(--inv));
+}
+
+.routeCasing {
+  stroke-width: calc(9px * var(--inv));
+}
+
+.routeLine {
+  stroke-width: calc(4.5px * var(--inv));
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: route-draw 900ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes route-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The 3D stack. */
+.stage {
+  transform-style: preserve-3d;
+}
+
+.plane {
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+}
+
+.stack3d {
+  transition: transform 350ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.stack3dDragging {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeLine {
+    animation: none;
+  }
+  .stack3d {
+    transition: none;
+  }
+}
